@@ -1,0 +1,8 @@
+{
+  "name": "MACO",
+  "description": "Aplikasi pengelola keuangan pribadi dalam mode elegan minimalis gelap dengan aksen oranye, fitur scan nota bertenaga Gemini AI, dan bagan analitik intuitif.",
+  "requestFramePermissions": [],
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
+}
