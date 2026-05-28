@@ -20,7 +20,8 @@ data class Transaction(
     val name: String, // e.g., "Gaji Bulanan", "Makan Siang", "Spaylater"
     val amount: Double,
     val isChecked: Boolean = false, // for checklists in Tagihan & Biaya Hidup
-    val notes: String = "" // metadata (SISA for bills, e.g. "Rp2.492.000")
+    val notes: String = "", // metadata (SISA for bills, e.g. "Rp2.492.000")
+    val pocket: String = "Utama" // "Utama", "Liburan", "Darurat", etc.
 )
 
 @Entity(tableName = "budget_plans")

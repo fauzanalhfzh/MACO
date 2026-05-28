@@ -229,7 +229,7 @@ fun MainScreen(viewModel: FinanceViewModel) {
         AddTransactionDialog(
             budgetPlans = budgetPlans,
             onDismiss = { showAddTxDialog = false },
-            onSave = { name, amount, type, categoryName, isChecked, notes ->
+            onSave = { name, amount, type, categoryName, isChecked, notes, pocket ->
                 val formatter = SimpleDateFormat("yyyy-MM-dd", Locale.getDefault())
                 val currentDateStr = formatter.format(Date())
                 viewModel.insertTransaction(
@@ -242,7 +242,8 @@ fun MainScreen(viewModel: FinanceViewModel) {
                         name = name,
                         amount = amount,
                         isChecked = isChecked,
-                        notes = notes
+                        notes = notes,
+                        pocket = pocket
                     )
                 )
                 showAddTxDialog = false
@@ -272,18 +273,18 @@ fun MainScreen(viewModel: FinanceViewModel) {
         AlertDialog(
             onDismissRequest = { showDeletePeriodDialog = false },
             containerColor = CharcoalSurface,
-            title = { Text("Risest Data periode?", color = SoftWhite, fontWeight = FontWeight.Bold) },
-            text = { Text("Apakah Anda yakin ingin mereset data rencana anggaran dan transaksi untuk periode $period kembali ke setelan standard Spreadsheet MACO?", color = MutedText) },
+            title = { Text("Hapus Semua Data Periode?", color = SoftWhite, fontWeight = FontWeight.Bold) },
+            text = { Text("Apakah Anda yakin ingin menghapus semua data (rencana anggaran dan transaksi) untuk periode $period untuk mulai dari awal?", color = MutedText) },
             confirmButton = {
                 TextButton(
                     onClick = {
-                        viewModel.restoreDefaultSpreadsheet()
+                        viewModel.deleteAllData()
                         showDeletePeriodDialog = false
-                        Toast.makeText(context, "Data $period berhasil direset!", Toast.LENGTH_SHORT).show()
+                        Toast.makeText(context, "Data $period berhasil dihapus!", Toast.LENGTH_SHORT).show()
                     },
                     colors = ButtonDefaults.textButtonColors(contentColor = PremiumOrange)
                 ) {
-                    Text("Ok, Reset")
+                    Text("Ok, Hapus")
                 }
             },
             dismissButton = {
@@ -427,14 +428,14 @@ fun FinanceHeader(
 
             Spacer(modifier = Modifier.width(6.dp))
 
-            // Reset spreadsheet button
+            // Hapus semua data button
             IconButton(
                 onClick = onResetClick,
                 modifier = Modifier
                     .size(36.dp)
                     .background(CharcoalCard, RoundedCornerShape(8.dp))
             ) {
-                Icon(Icons.Default.Refresh, contentDescription = "Reset Spreadsheet", tint = PremiumOrange, modifier = Modifier.size(18.dp))
+                Icon(Icons.Default.Delete, contentDescription = "Hapus Semua Data", tint = PremiumOrange, modifier = Modifier.size(18.dp))
             }
         }
     }
@@ -1443,6 +1444,10 @@ fun TransactionListItem(transaction: Transaction, onDelete: () -> Unit) {
                     Spacer(modifier = Modifier.width(6.dp))
                     Text("•", color = MutedText, fontSize = 10.sp)
                     Spacer(modifier = Modifier.width(6.dp))
+                    Text(tx.pocket, color = PastelOrange, fontSize = 10.sp, fontWeight = FontWeight.Bold)
+                    Spacer(modifier = Modifier.width(6.dp))
+                    Text("•", color = MutedText, fontSize = 10.sp)
+                    Spacer(modifier = Modifier.width(6.dp))
                     Text(tx.dateString, color = MutedText, fontSize = 10.sp)
                 }
             }
@@ -1630,6 +1635,73 @@ fun AnalysisAndSettingsTab(
             }
         }
 
+        // --- 2.5 POCKET ANALYSIS ---
+        item {
+            val pocketsGrouped = transactions
+                .filter { it.type == "Pengeluaran" || it.type == "Tagihan" }
+                .groupBy { it.pocket }
+                .mapValues { entry -> entry.value.sumOf { it.amount } }
+                .toList()
+                .sortedByDescending { it.second }
+
+            Card(
+                colors = CardDefaults.cardColors(containerColor = CharcoalSurface),
+                shape = RoundedCornerShape(16.dp),
+                border = BorderStroke(1.dp, DarkBorder),
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Column(modifier = Modifier.padding(16.dp)) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Box(modifier = Modifier.size(4.dp, 16.dp).background(SoftYellow))
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text("Analisis Pocket (Dompet Pengeluaran)", color = SoftWhite, fontWeight = FontWeight.Bold, fontSize = 14.sp)
+                    }
+
+                    Spacer(modifier = Modifier.height(16.dp))
+
+                    if (pocketsGrouped.isEmpty()) {
+                        Box(modifier = Modifier.fillMaxWidth().height(100.dp), contentAlignment = Alignment.Center) {
+                            Text("Belum ada pengeluaran berdasarkan Pocket", color = MutedText, fontSize = 11.sp)
+                        }
+                    } else {
+                        val maxPocketAmt = pocketsGrouped.firstOrNull()?.second ?: 1.0
+                        pocketsGrouped.forEach { (pocketName, amt) ->
+                            val fillRatio = (amt / maxPocketAmt).toFloat()
+                            Column(modifier = Modifier.padding(vertical = 4.dp)) {
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.SpaceBetween
+                                ) {
+                                    Text(pocketName, color = SoftWhite, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                                    Text(formatRupiah(amt), color = SoftYellow, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                                }
+                                Spacer(modifier = Modifier.height(4.dp))
+                                // Horizontal colored visual progress bar
+                                Box(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .height(8.dp)
+                                        .clip(CircleShape)
+                                        .background(CharcoalCard)
+                                ) {
+                                    Box(
+                                        modifier = Modifier
+                                            .fillMaxHeight()
+                                            .fillMaxWidth(fillRatio)
+                                            .background(
+                                                Brush.horizontalGradient(
+                                                    listOf(SoftYellow, PastelOrange)
+                                                )
+                                            )
+                                    )
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
         // --- 3. WEEKEND BUDGET ALERTS SYSTEM ---
         item {
             Card(
@@ -1761,16 +1833,33 @@ fun ChartLegendItem(color: Color, text: String) {
 fun AddTransactionDialog(
     budgetPlans: List<BudgetPlan>,
     onDismiss: () -> Unit,
-    onSave: (String, Double, String, String, Boolean, String) -> Unit
+    onSave: (String, Double, String, String, Boolean, String, String) -> Unit
 ) {
     var name by remember { mutableStateOf("") }
     var amountStr by remember { mutableStateOf("") }
     var type by remember { mutableStateOf("Pengeluaran") }
     var categoryName by remember { mutableStateOf("") }
     var notes by remember { mutableStateOf("") }
+    var pocket by remember { mutableStateOf("Utama") }
 
     val types = listOf("Pemasukan", "Tabungan", "Tagihan", "Pengeluaran")
     var showTypeMenu by remember { mutableStateOf(false) }
+    
+    val pockets = listOf("Utama", "Tabungan", "Liburan", "Darurat", "Pendidikan", "Bisnis")
+    var showPocketMenu by remember { mutableStateOf(false) }
+
+    val baseCategories = mapOf(
+        "Pemasukan" to listOf("Gaji", "Bonus", "Jualan", "Saham", "Freelance", "Lainnya"),
+        "Tabungan" to listOf("Tabungan Bank", "Dana Darurat", "Investasi", "Lainnya"),
+        "Tagihan" to listOf("Pinjaman", "Paylater", "Kartu Kredit", "Cicilan", "Lainnya"),
+        "Pengeluaran" to listOf("Makan", "Kebutuhan Wajib", "Listrik", "Air", "Internet/Wifi", "Transportasi", "Olahraga", "Belanja", "Service", "Hiburan", "Lainnya")
+    )
+    var showCategoryMenu by remember { mutableStateOf(false) }
+
+    LaunchedEffect(type) {
+        // Option to reset category when type changes:
+        // categoryName = ""
+    }
 
     AlertDialog(
         onDismissRequest = onDismiss,
@@ -1780,13 +1869,23 @@ fun AddTransactionDialog(
             Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
                 // Dropdown untuk Type
                 Box {
-                    Button(
-                        onClick = { showTypeMenu = true },
-                        colors = ButtonDefaults.buttonColors(containerColor = CharcoalCard),
+                    OutlinedTextField(
+                        value = type,
+                        onValueChange = {},
+                        readOnly = true,
+                        label = { Text("Klasifikasi Transaksi") },
+                        leadingIcon = { Icon(Icons.Default.List, contentDescription = null, tint = PremiumOrange) },
+                        trailingIcon = { Icon(Icons.Default.ArrowDropDown, contentDescription = null, tint = PremiumOrange) },
+                        colors = OutlinedTextFieldDefaults.colors(
+                            focusedTextColor = SoftWhite, unfocusedTextColor = SoftWhite,
+                            focusedBorderColor = PremiumOrange, unfocusedBorderColor = DarkBorder,
+                            focusedLabelColor = PremiumOrange
+                        ),
                         modifier = Modifier.fillMaxWidth()
-                    ) {
-                        Text("Klasifikasi: $type", color = SoftWhite)
-                    }
+                    )
+                    // Transparent box to capture clicks
+                    Box(modifier = Modifier.matchParentSize().clickable { showTypeMenu = true })
+                    
                     DropdownMenu(
                         expanded = showTypeMenu,
                         onDismissRequest = { showTypeMenu = false },
@@ -1804,10 +1903,46 @@ fun AddTransactionDialog(
                     }
                 }
 
+                // Dropdown untuk Pocket
+                Box {
+                    OutlinedTextField(
+                        value = pocket,
+                        onValueChange = {},
+                        readOnly = true,
+                        label = { Text("Sumber Dompet (Pocket)") },
+                        leadingIcon = { Icon(Icons.Default.Star, contentDescription = null, tint = PremiumOrange) },
+                        trailingIcon = { Icon(Icons.Default.ArrowDropDown, contentDescription = null, tint = PremiumOrange) },
+                        colors = OutlinedTextFieldDefaults.colors(
+                            focusedTextColor = SoftWhite, unfocusedTextColor = SoftWhite,
+                            focusedBorderColor = PremiumOrange, unfocusedBorderColor = DarkBorder,
+                            focusedLabelColor = PremiumOrange
+                        ),
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                    Box(modifier = Modifier.matchParentSize().clickable { showPocketMenu = true })
+                    
+                    DropdownMenu(
+                        expanded = showPocketMenu,
+                        onDismissRequest = { showPocketMenu = false },
+                        modifier = Modifier.background(CharcoalCard)
+                    ) {
+                        pockets.forEach { p ->
+                            DropdownMenuItem(
+                                text = { Text(p, color = SoftWhite) },
+                                onClick = {
+                                    pocket = p
+                                    showPocketMenu = false
+                                }
+                            )
+                        }
+                    }
+                }
+
                 OutlinedTextField(
                     value = name,
                     onValueChange = { name = it },
                     label = { Text("Deskripsi / Keterangan") },
+                    leadingIcon = { Icon(Icons.Default.Edit, contentDescription = null, tint = PremiumOrange) },
                     colors = OutlinedTextFieldDefaults.colors(
                         focusedTextColor = SoftWhite, unfocusedTextColor = SoftWhite,
                         focusedBorderColor = PremiumOrange, unfocusedBorderColor = DarkBorder,
@@ -1819,7 +1954,8 @@ fun AddTransactionDialog(
                 OutlinedTextField(
                     value = amountStr,
                     onValueChange = { amountStr = it },
-                    label = { Text("Nominal (Rp)") },
+                    label = { Text("Nominal") },
+                    leadingIcon = { Text("Rp", color = PremiumOrange, fontWeight = FontWeight.Bold, modifier = Modifier.padding(start = 16.dp, end = 8.dp)) },
                     keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
                     colors = OutlinedTextFieldDefaults.colors(
                         focusedTextColor = SoftWhite, unfocusedTextColor = SoftWhite,
@@ -1829,22 +1965,51 @@ fun AddTransactionDialog(
                     modifier = Modifier.fillMaxWidth()
                 )
 
-                OutlinedTextField(
-                    value = categoryName,
-                    onValueChange = { categoryName = it },
-                    label = { Text("Kategori (Contoh: Makan, Wifi, dll.)") },
-                    colors = OutlinedTextFieldDefaults.colors(
-                        focusedTextColor = SoftWhite, unfocusedTextColor = SoftWhite,
-                        focusedBorderColor = PremiumOrange, unfocusedBorderColor = DarkBorder,
-                        focusedLabelColor = PremiumOrange
-                    ),
-                    modifier = Modifier.fillMaxWidth()
-                )
+                // Kategori dengan Dropdown
+                Box {
+                    OutlinedTextField(
+                        value = categoryName,
+                        onValueChange = { categoryName = it },
+                        label = { Text("Kategori Cth: Makan, Listrik") },
+                        leadingIcon = { Icon(Icons.Default.Info, contentDescription = null, tint = PremiumOrange) },
+                        trailingIcon = { 
+                            IconButton(onClick = { showCategoryMenu = true }) {
+                                Icon(Icons.Default.ArrowDropDown, contentDescription = "Pilih Kategori", tint = PremiumOrange)
+                            }
+                        },
+                        colors = OutlinedTextFieldDefaults.colors(
+                            focusedTextColor = SoftWhite, unfocusedTextColor = SoftWhite,
+                            focusedBorderColor = PremiumOrange, unfocusedBorderColor = DarkBorder,
+                            focusedLabelColor = PremiumOrange
+                        ),
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                    
+                    val dynamicCategories = budgetPlans.filter { it.category == type }.map { it.name }
+                    val currentCategories = (dynamicCategories + (baseCategories[type] ?: emptyList())).distinct()
+                    
+                    DropdownMenu(
+                        expanded = showCategoryMenu,
+                        onDismissRequest = { showCategoryMenu = false },
+                        modifier = Modifier.background(CharcoalCard).heightIn(max = 250.dp)
+                    ) {
+                        currentCategories.forEach { cat ->
+                            DropdownMenuItem(
+                                text = { Text(cat, color = SoftWhite) },
+                                onClick = {
+                                    categoryName = cat
+                                    showCategoryMenu = false
+                                }
+                            )
+                        }
+                    }
+                }
 
                 OutlinedTextField(
                     value = notes,
                     onValueChange = { notes = it },
-                    label = { Text("Catatan Tambahan (Opsional)") },
+                    label = { Text("Catatan Opsional") },
+                    leadingIcon = { Icon(Icons.Default.Add, contentDescription = null, tint = PremiumOrange) },
                     colors = OutlinedTextFieldDefaults.colors(
                         focusedTextColor = SoftWhite, unfocusedTextColor = SoftWhite,
                         focusedBorderColor = PremiumOrange, unfocusedBorderColor = DarkBorder,
@@ -1858,7 +2023,7 @@ fun AddTransactionDialog(
             Button(
                 onClick = {
                     val amt = amountStr.toDoubleOrNull() ?: 0.0
-                    onSave(name, amt, type, categoryName, type == "Tagihan", notes)
+                    onSave(name, amt, type, categoryName, type == "Tagihan", notes, pocket)
                 },
                 colors = ButtonDefaults.buttonColors(containerColor = PremiumOrange)
             ) {
