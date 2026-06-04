@@ -100,7 +100,43 @@ fun MainScreen(viewModel: FinanceViewModel) {
     // Modal dialog states
     var showAddTxDialog by remember { mutableStateOf(false) }
     var showAddPlanDialog by remember { mutableStateOf(false) }
+    var showAddBillDialog by remember { mutableStateOf(false) }
     var showDeletePeriodDialog by remember { mutableStateOf(false) }
+    
+    // Pickers for FAB
+    val imagePickerLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.GetContent()
+    ) { uri: Uri? ->
+        if (uri != null) {
+            try {
+                val inputStream = context.contentResolver.openInputStream(uri)
+                val bytes = inputStream?.readBytes()
+                if (bytes != null) {
+                    viewModel.scanReceiptImage(bytes)
+                }
+            } catch (e: Exception) {
+                Toast.makeText(context, "Error: ${e.localizedMessage}", Toast.LENGTH_SHORT).show()
+            }
+        }
+    }
+
+    val cameraFile = remember { java.io.File(context.cacheDir, "main_receipt.jpg") }
+    val cameraUri = remember { androidx.core.content.FileProvider.getUriForFile(context, "${context.packageName}.provider", cameraFile) }
+
+    val takePictureLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.TakePicture()
+    ) { success ->
+        if (success) {
+            try {
+                val bytes = cameraFile.readBytes()
+                viewModel.scanReceiptImage(bytes)
+            } catch (e: Exception) {
+                Toast.makeText(context, "Error: ${e.localizedMessage}", Toast.LENGTH_SHORT).show()
+            }
+        }
+    }
+
+    var showFabMenu by remember { mutableStateOf(false) }
 
     Scaffold(
         modifier = Modifier
@@ -149,14 +185,56 @@ fun MainScreen(viewModel: FinanceViewModel) {
         },
         floatingActionButton = {
             if (currentTab != 2) {
-                FloatingActionButton(
-                    onClick = { showAddTxDialog = true },
-                    containerColor = PremiumOrange,
-                    contentColor = SoftWhite,
-                    shape = CircleShape,
-                     modifier = Modifier.padding(bottom = 8.dp)
+                Column(
+                    horizontalAlignment = Alignment.End,
+                    modifier = Modifier.padding(bottom = 8.dp)
                 ) {
-                    Icon(Icons.Default.Add, contentDescription = "Tambah Transaksi")
+                    if (showFabMenu) {
+                        FloatingActionButton(
+                            onClick = { 
+                                showFabMenu = false
+                                takePictureLauncher.launch(cameraUri) 
+                            },
+                            containerColor = CharcoalSurface,
+                            contentColor = PremiumOrange,
+                            shape = CircleShape,
+                            modifier = Modifier.padding(bottom = 8.dp).size(48.dp)
+                        ) {
+                            Icon(Icons.Default.Add, contentDescription = "Camera", modifier = Modifier.size(20.dp))
+                        }
+                        FloatingActionButton(
+                            onClick = { 
+                                showFabMenu = false
+                                imagePickerLauncher.launch("image/*") 
+                            },
+                            containerColor = CharcoalSurface,
+                            contentColor = PremiumOrange,
+                            shape = CircleShape,
+                            modifier = Modifier.padding(bottom = 8.dp).size(48.dp)
+                        ) {
+                            Icon(Icons.Default.Menu, contentDescription = "Gallery", modifier = Modifier.size(20.dp))
+                        }
+                        FloatingActionButton(
+                            onClick = { 
+                                showFabMenu = false
+                                showAddTxDialog = true 
+                            },
+                            containerColor = CharcoalSurface,
+                            contentColor = PremiumOrange,
+                            shape = CircleShape,
+                            modifier = Modifier.padding(bottom = 8.dp).size(48.dp)
+                        ) {
+                            Icon(Icons.Default.Edit, contentDescription = "Manual", modifier = Modifier.size(20.dp))
+                        }
+                    }
+                    FloatingActionButton(
+                        onClick = { showFabMenu = !showFabMenu },
+                        containerColor = PremiumOrange,
+                        contentColor = SoftWhite,
+                        shape = CircleShape,
+                    ) {
+                        Icon(if (showFabMenu) Icons.Default.Close else Icons.Default.Add, contentDescription = "Menu")
+                    }
                 }
             }
         },
@@ -193,16 +271,21 @@ fun MainScreen(viewModel: FinanceViewModel) {
                     expensesPlanned = expensesPlanned,
                     remainingBudgetActual = remainingBudgetActual,
                     remainingBudgetPercentage = remainingBudgetPercentage,
-                    onToggleCheck = { tx -> viewModel.updateTransaction(tx.copy(isChecked = !tx.isChecked)) },
+                    onToggleCheck = { tx -> viewModel.toggleTransactionState(tx) },
+                    onToggleBill = { plan, tx -> viewModel.toggleBillTransaction(plan, tx) },
                     onDeleteTx = { tx -> viewModel.deleteTransaction(tx.id) },
-                    onAddPlanClick = { showAddPlanDialog = true }
+                    onAddPlanClick = { showAddPlanDialog = true },
+                    onAddBillPlanClick = { showAddBillDialog = true },
+                    onUpdatePlan = { plan -> viewModel.addBudgetPlan(plan) }, // addBudgetPlan actually does UPSERT
+                    onDeletePlan = { id -> viewModel.deleteBudgetPlan(id) }
                 )
                 1 -> TransactionAndScanTab(
                     transactions = transactions,
                     isScanning = isScanning,
                     scanResult = scanResult,
                     userApiKey = userApiKey,
-                    onScanClick = { bytes -> viewModel.scanReceiptImage(bytes) },
+                    onOpenCamera = { takePictureLauncher.launch(cameraUri) },
+                    onOpenGallery = { imagePickerLauncher.launch("image/*") },
                     onConfirmScan = { name, amt, cat, dt -> viewModel.confirmReceiptTransaction(name, amt, cat, dt) },
                     onClearScan = { viewModel.clearScanResult() },
                     onDeleteTx = { tx -> viewModel.deleteTransaction(tx.id) }
@@ -217,8 +300,11 @@ fun MainScreen(viewModel: FinanceViewModel) {
                     billsPlanned = billsPlanned,
                     expensesPlanned = expensesPlanned,
                     transactions = transactions,
+                    budgetPlans = budgetPlans,
                     userApiKey = userApiKey,
-                    onSaveApiKey = { viewModel.saveUserApiKey(it) }
+                    onSaveApiKey = { viewModel.saveUserApiKey(it) },
+                    onUpdatePlan = { viewModel.addBudgetPlan(it) },
+                    onDeletePlan = { viewModel.deleteBudgetPlan(it) }
                 )
             }
         }
@@ -253,18 +339,41 @@ fun MainScreen(viewModel: FinanceViewModel) {
 
     if (showAddPlanDialog) {
         AddPlanDialog(
+            lockedCategory = false,
             onDismiss = { showAddPlanDialog = false },
-            onSave = { name, amount, category, notes ->
+            onSave = { name, amount, category, notes, dueDate ->
                 viewModel.addBudgetPlan(
                     BudgetPlan(
                         monthYear = period,
                         category = category,
                         name = name,
                         plannedAmount = amount,
-                        notes = notes
+                        notes = notes,
+                        dueDate = dueDate
                     )
                 )
                 showAddPlanDialog = false
+            }
+        )
+    }
+
+    if (showAddBillDialog) {
+        AddPlanDialog(
+            initialCategory = "Tagihan",
+            lockedCategory = true,
+            onDismiss = { showAddBillDialog = false },
+            onSave = { name, amount, category, notes, dueDate ->
+                viewModel.addBudgetPlan(
+                    BudgetPlan(
+                        monthYear = period,
+                        category = category,
+                        name = name,
+                        plannedAmount = amount,
+                        notes = notes,
+                        dueDate = dueDate
+                    )
+                )
+                showAddBillDialog = false
             }
         )
     }
@@ -458,8 +567,12 @@ fun DashboardTab(
     remainingBudgetActual: Double,
     remainingBudgetPercentage: Double,
     onToggleCheck: (Transaction) -> Unit,
+    onToggleBill: (BudgetPlan, Transaction?) -> Unit,
     onDeleteTx: (Transaction) -> Unit,
-    onAddPlanClick: () -> Unit
+    onAddPlanClick: () -> Unit,
+    onAddBillPlanClick: () -> Unit,
+    onUpdatePlan: (BudgetPlan) -> Unit,
+    onDeletePlan: (Int) -> Unit
 ) {
     LazyColumn(
         modifier = Modifier
@@ -479,6 +592,14 @@ fun DashboardTab(
         // 1.5 Fallback In-App Weekend Alert Notice
         item {
             FinansialHealthAlertCard(remainingBudget = remainingBudgetActual)
+        }
+
+        // 1.8 Critical Bills Due Alarm notice
+        item {
+            BillDueAlertCard(
+                plans = budgetPlans.filter { it.category == "Tagihan" },
+                transactions = transactions.filter { it.type == "Tagihan" }
+            )
         }
 
         // 2. Cashflow Sheet Summary Table (Plan vs Actual)
@@ -510,8 +631,11 @@ fun DashboardTab(
             TagihanSheetCard(
                 plans = budgetPlans.filter { it.category == "Tagihan" },
                 transactions = transactions.filter { it.type == "Tagihan" },
-                onToggleCollect = onToggleCheck,
-                onDeleteTx = onDeleteTx
+                onToggleCollect = onToggleBill,
+                onDeleteTx = onDeleteTx,
+                onAddBillPlan = onAddBillPlanClick,
+                onUpdatePlan = onUpdatePlan,
+                onDeletePlan = onDeletePlan
             )
         }
 
@@ -521,7 +645,8 @@ fun DashboardTab(
                 plans = budgetPlans.filter { it.category == "Pengeluaran" },
                 transactions = transactions.filter { it.type == "Pengeluaran" },
                 onToggleCheck = onToggleCheck,
-                onDeleteTx = onDeleteTx
+                onDeleteTx = onDeleteTx,
+                onAddPlan = onAddPlanClick
             )
         }
     }
@@ -884,9 +1009,37 @@ fun TabunganSheetCard(
 fun TagihanSheetCard(
     plans: List<BudgetPlan>,
     transactions: List<Transaction>,
-    onToggleCollect: (Transaction) -> Unit,
-    onDeleteTx: (Transaction) -> Unit
+    onToggleCollect: (BudgetPlan, Transaction?) -> Unit,
+    onDeleteTx: (Transaction) -> Unit,
+    onAddBillPlan: () -> Unit,
+    onUpdatePlan: (BudgetPlan) -> Unit,
+    onDeletePlan: (Int) -> Unit
 ) {
+    val sortedPlans = remember(plans, transactions) {
+        plans.map { plan ->
+            val billingTx = transactions.firstOrNull { it.categoryName == plan.name }
+            val isChecked = billingTx?.isChecked ?: false
+            val statusInfo = getDueDateStatus(plan, isChecked)
+            
+            // Priority 1: Unpaid and Overdue/Due Today (red alarm)
+            // Priority 2: Unpaid and Due Soon (yellow alarm)
+            // Priority 3: Unpaid and No Due Date / Far Due Date
+            // Priority 4: Paid (green)
+            val priority = when {
+                isChecked -> 4
+                statusInfo?.alertColorRef == "red" -> 1
+                statusInfo?.alertColorRef == "yellow" -> 2
+                else -> 3
+            }
+            val dueDayForSort = if (plan.dueDate == 0) 999 else plan.dueDate
+            Triple(plan, priority, dueDayForSort)
+        }.sortedWith(
+            compareBy<Triple<BudgetPlan, Int, Int>> { it.second }
+                .thenBy { it.third }
+                .thenBy { it.first.name }
+        ).map { it.first }
+    }
+
     Card(
         colors = CardDefaults.cardColors(containerColor = CharcoalSurface),
         shape = RoundedCornerShape(16.dp),
@@ -894,24 +1047,29 @@ fun TagihanSheetCard(
         modifier = Modifier.fillMaxWidth()
     ) {
         Column(modifier = Modifier.padding(16.dp)) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Box(modifier = Modifier.size(4.dp, 16.dp).background(SoftBlue))
-                Spacer(modifier = Modifier.width(8.dp))
-                Text("Tagihan & Cicilan", color = SoftWhite, fontWeight = FontWeight.Bold, fontSize = 15.sp)
-                Spacer(modifier = Modifier.width(6.dp))
-                val paidCount = transactions.filter { it.isChecked }.size
-                val totalCount = plans.size
-                Surface(
-                    color = SoftBlue.copy(alpha = 0.15f),
-                    shape = RoundedCornerShape(6.dp)
-                ) {
-                    Text(
-                        "$paidCount / $totalCount Lunas",
-                        modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp),
-                        color = SoftBlue,
-                        fontSize = 11.sp,
-                        fontWeight = FontWeight.Bold
-                    )
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.SpaceBetween, modifier = Modifier.fillMaxWidth()) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Box(modifier = Modifier.size(4.dp, 16.dp).background(SoftBlue))
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text("Tagihan & Cicilan", color = SoftWhite, fontWeight = FontWeight.Bold, fontSize = 15.sp)
+                    Spacer(modifier = Modifier.width(6.dp))
+                    val paidCount = transactions.filter { it.isChecked }.size
+                    val totalCount = plans.size
+                    Surface(
+                        color = SoftBlue.copy(alpha = 0.15f),
+                        shape = RoundedCornerShape(6.dp)
+                    ) {
+                        Text(
+                            "$paidCount / $totalCount Lunas",
+                            modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp),
+                            color = SoftBlue,
+                            fontSize = 11.sp,
+                            fontWeight = FontWeight.Bold
+                        )
+                    }
+                }
+                IconButton(onClick = onAddBillPlan, modifier = Modifier.size(24.dp)) {
+                    Icon(Icons.Default.Add, contentDescription = "Add Bill Plan", tint = SoftBlue, modifier = Modifier.size(20.dp))
                 }
             }
 
@@ -933,59 +1091,276 @@ fun TagihanSheetCard(
 
             Spacer(modifier = Modifier.height(6.dp))
 
-            if (plans.isEmpty()) {
+            if (sortedPlans.isEmpty()) {
                 Box(modifier = Modifier.fillMaxWidth().padding(16.dp), contentAlignment = Alignment.Center) {
                     Text("Belum ada daftar tagihan", color = MutedText, fontSize = 12.sp)
                 }
             } else {
-                plans.forEach { plan ->
+                sortedPlans.forEach { plan ->
                     // Find actual transaction for this bill. If it already exists, toggle. If not, can generate on checked.
                     val billingTx = transactions.firstOrNull { it.categoryName == plan.name }
                     val isChecked = billingTx?.isChecked ?: false
+                    
+                    var isEditing by remember { mutableStateOf(false) }
 
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(vertical = 4.dp),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        // Interactive Checkbox
-                        Checkbox(
-                            checked = isChecked,
-                            onCheckedChange = { _ ->
-                                if (billingTx != null) {
-                                    onToggleCollect(billingTx)
+                    if (!isEditing) {
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clickable { isEditing = true }
+                                .padding(vertical = 6.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            // Interactive Checkbox
+                            Checkbox(
+                                checked = isChecked,
+                                onCheckedChange = { _ ->
+                                    onToggleCollect(plan, billingTx)
+                                },
+                                colors = CheckboxDefaults.colors(
+                                    checkedColor = SoftBlue,
+                                    uncheckedColor = DarkBorder,
+                                    checkmarkColor = CharcoalSurface
+                                ),
+                                modifier = Modifier.size(28.dp)
+                            )
+                            Spacer(modifier = Modifier.width(6.dp))
+                            
+                            Column(
+                                modifier = Modifier.weight(1.3f)
+                            ) {
+                                Text(
+                                    plan.name, 
+                                    color = if (isChecked) MutedText else SoftWhite, 
+                                    fontSize = 12.sp, 
+                                    maxLines = 1, 
+                                    overflow = TextOverflow.Ellipsis,
+                                    fontWeight = FontWeight.SemiBold
+                                )
+                                val statusInfo = getDueDateStatus(plan, isChecked)
+                                if (statusInfo != null) {
+                                    Surface(
+                                        color = when (statusInfo.alertColorRef) {
+                                            "red" -> CrimsonRed.copy(alpha = 0.15f)
+                                            "yellow" -> SoftYellow.copy(alpha = 0.15f)
+                                            "green" -> SoftGreen.copy(alpha = 0.15f)
+                                            else -> CharcoalCard
+                                        },
+                                        border = BorderStroke(
+                                            0.5.dp,
+                                            when (statusInfo.alertColorRef) {
+                                                "red" -> CrimsonRed
+                                                "yellow" -> SoftYellow
+                                                "green" -> SoftGreen
+                                                else -> DarkBorder
+                                            }
+                                        ),
+                                        shape = RoundedCornerShape(4.dp),
+                                        modifier = Modifier.padding(top = 2.dp)
+                                    ) {
+                                        Row(
+                                            modifier = Modifier.padding(horizontal = 4.dp, vertical = 1.dp),
+                                            verticalAlignment = Alignment.CenterVertically,
+                                            horizontalArrangement = Arrangement.spacedBy(2.dp)
+                                        ) {
+                                            val icon = when (statusInfo.alertColorRef) {
+                                                "red" -> Icons.Default.Warning
+                                                "yellow" -> Icons.Default.Notifications
+                                                "green" -> Icons.Default.Check
+                                                else -> Icons.Default.Info
+                                            }
+                                            val color = when (statusInfo.alertColorRef) {
+                                                "red" -> SoftRed
+                                                "yellow" -> SoftYellow
+                                                "green" -> SoftGreen
+                                                else -> MutedText
+                                            }
+                                            Icon(
+                                                imageVector = icon,
+                                                contentDescription = null,
+                                                tint = color,
+                                                modifier = Modifier.size(10.dp)
+                                            )
+                                            Text(
+                                                statusInfo.statusText,
+                                                color = color,
+                                                fontSize = 9.sp,
+                                                fontWeight = FontWeight.Bold
+                                            )
+                                        }
+                                    }
                                 } else {
-                                    // Generate a physical checked transaction
-                                    onToggleCollect(
-                                        Transaction(
-                                            timestamp = System.currentTimeMillis(),
-                                            dateString = "2026-05-28", // default or match month
-                                            monthYear = plan.monthYear,
-                                            type = "Tagihan",
-                                            categoryName = plan.name,
-                                            name = "Bayar ${plan.name}",
-                                            amount = plan.plannedAmount,
-                                            isChecked = true,
-                                            notes = plan.notes
-                                        )
+                                    Text(
+                                        "Tanpa jatuh tempo",
+                                        color = MutedText,
+                                        fontSize = 9.sp,
+                                        modifier = Modifier.padding(top = 2.dp)
                                     )
                                 }
-                            },
-                            colors = CheckboxDefaults.colors(
-                                checkedColor = SoftBlue,
-                                uncheckedColor = DarkBorder,
-                                checkmarkColor = CharcoalSurface
-                            ),
-                            modifier = Modifier.size(28.dp)
-                        )
-                        Spacer(modifier = Modifier.width(6.dp))
-                        
-                        Text(plan.name, color = if (isChecked) MutedText else SoftWhite, fontSize = 12.sp, modifier = Modifier.weight(1.3f), maxLines = 1, overflow = TextOverflow.Ellipsis)
-                        Text(formatRupiah(plan.plannedAmount), color = if (isChecked) MutedText else SoftWhite, fontSize = 11.sp, modifier = Modifier.weight(1f), textAlign = TextAlign.End)
-                        Text(plan.notes.ifEmpty { "Rp0" }, color = if (isChecked) MutedText else SoftBlue, fontSize = 11.sp, fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f), textAlign = TextAlign.End)
+                            }
+                            Text(formatRupiah(plan.plannedAmount), color = if (isChecked) MutedText else SoftWhite, fontSize = 11.sp, modifier = Modifier.weight(1f), textAlign = TextAlign.End)
+                            Text(plan.notes.ifEmpty { "Rp0" }, color = if (isChecked) MutedText else SoftBlue, fontSize = 11.sp, fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f), textAlign = TextAlign.End)
+                        }
+                        HorizontalDivider(color = DarkBorder, thickness = 0.5.dp)
+                    } else {
+                        // INLINE EDITING MODE
+                        val tenorRegex = """^(.*?)\s+(\d+)/(\d+)$""".toRegex()
+                        val matchResult = tenorRegex.matchEntire(plan.name)
+                        var baseNameInput by remember { mutableStateOf(matchResult?.groupValues?.get(1) ?: plan.name) }
+                        var curTenorInput by remember { mutableStateOf(matchResult?.groupValues?.get(2) ?: "") }
+                        var totTenorInput by remember { mutableStateOf(matchResult?.groupValues?.get(3) ?: "") }
+                        var cicilanInput by remember { mutableStateOf(plan.plannedAmount.toLong().toString()) }
+                        var sisaInput by remember { mutableStateOf(plan.notes.filter { it.isDigit() }) }
+                        var dueDateInput by remember { mutableStateOf(plan.dueDate.let { if (it > 0) it.toString() else "" }) }
+
+                        Column(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .background(CharcoalCard, RoundedCornerShape(8.dp))
+                                .padding(12.dp)
+                                .padding(bottom = 8.dp)
+                        ) {
+                            Row(horizontalArrangement = Arrangement.SpaceBetween, modifier = Modifier.fillMaxWidth()) {
+                                Text("Ubah Tagihan", color = SoftWhite, fontWeight = FontWeight.Bold, fontSize = 12.sp)
+                                IconButton(onClick = { onDeletePlan(plan.id); isEditing = false }, modifier = Modifier.size(24.dp)) {
+                                    Icon(Icons.Default.Delete, contentDescription = "Hapus", tint = CrimsonRed, modifier = Modifier.size(16.dp))
+                                }
+                            }
+                            Spacer(modifier = Modifier.height(8.dp))
+
+                            OutlinedTextField(
+                                value = baseNameInput,
+                                onValueChange = { baseNameInput = it },
+                                label = { Text("Nama Tagihan", fontSize = 10.sp) },
+                                colors = OutlinedTextFieldDefaults.colors(
+                                    focusedTextColor = SoftWhite, unfocusedTextColor = SoftWhite,
+                                    focusedBorderColor = PremiumOrange, unfocusedBorderColor = DarkBorder,
+                                    focusedLabelColor = PremiumOrange
+                                ),
+                                modifier = Modifier.fillMaxWidth().padding(bottom = 6.dp)
+                            )
+            
+                            Row(
+                                modifier = Modifier.fillMaxWidth().padding(bottom = 6.dp),
+                                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                            ) {
+                                OutlinedTextField(
+                                    value = curTenorInput,
+                                    onValueChange = { curTenorInput = it },
+                                    label = { Text("Tenor Ke", fontSize = 10.sp) },
+                                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                                    colors = OutlinedTextFieldDefaults.colors(
+                                        focusedTextColor = SoftWhite, unfocusedTextColor = SoftWhite,
+                                        focusedBorderColor = PremiumOrange, unfocusedBorderColor = DarkBorder,
+                                        focusedLabelColor = PremiumOrange
+                                    ),
+                                    modifier = Modifier.weight(1f)
+                                )
+                                OutlinedTextField(
+                                    value = totTenorInput,
+                                    onValueChange = { totTenorInput = it },
+                                    label = { Text("Total Tenor", fontSize = 10.sp) },
+                                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                                    colors = OutlinedTextFieldDefaults.colors(
+                                        focusedTextColor = SoftWhite, unfocusedTextColor = SoftWhite,
+                                        focusedBorderColor = PremiumOrange, unfocusedBorderColor = DarkBorder,
+                                        focusedLabelColor = PremiumOrange
+                                    ),
+                                    modifier = Modifier.weight(1f)
+                                )
+                            }
+            
+                            Row(
+                                modifier = Modifier.fillMaxWidth().padding(bottom = 6.dp),
+                                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                            ) {
+                                OutlinedTextField(
+                                    value = cicilanInput,
+                                    onValueChange = { cicilanInput = it },
+                                    label = { Text("Cicilan (Rp)", fontSize = 10.sp) },
+                                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                                    colors = OutlinedTextFieldDefaults.colors(
+                                        focusedTextColor = SoftWhite, unfocusedTextColor = SoftWhite,
+                                        focusedBorderColor = PremiumOrange, unfocusedBorderColor = DarkBorder,
+                                        focusedLabelColor = PremiumOrange
+                                    ),
+                                    modifier = Modifier.weight(1f)
+                                )
+                                OutlinedTextField(
+                                    value = sisaInput,
+                                    onValueChange = { sisaInput = it },
+                                    label = { Text("Sisa Hutang (Rp)", fontSize = 10.sp) },
+                                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                                    colors = OutlinedTextFieldDefaults.colors(
+                                        focusedTextColor = SoftWhite, unfocusedTextColor = SoftWhite,
+                                        focusedBorderColor = PremiumOrange, unfocusedBorderColor = DarkBorder,
+                                        focusedLabelColor = PremiumOrange
+                                    ),
+                                    modifier = Modifier.weight(1f)
+                                )
+                            }
+
+                            OutlinedTextField(
+                                value = dueDateInput,
+                                onValueChange = { input ->
+                                    if (input.isEmpty() || (input.toIntOrNull() in 1..31)) {
+                                        dueDateInput = input
+                                    }
+                                },
+                                label = { Text("Tanggal Jatuh Tempo Bulanan (1-31) - Opsional", fontSize = 10.sp) },
+                                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                                colors = OutlinedTextFieldDefaults.colors(
+                                    focusedTextColor = SoftWhite, unfocusedTextColor = SoftWhite,
+                                    focusedBorderColor = PremiumOrange, unfocusedBorderColor = DarkBorder,
+                                    focusedLabelColor = PremiumOrange
+                                ),
+                                modifier = Modifier.fillMaxWidth().padding(bottom = 8.dp)
+                            )
+            
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.End,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                TextButton(onClick = { isEditing = false }) {
+                                    Text("Batal", color = MutedText, fontSize = 12.sp)
+                                }
+                                Spacer(modifier = Modifier.width(8.dp))
+                                Button(
+                                    onClick = {
+                                        val finalName = if (curTenorInput.isNotEmpty() && totTenorInput.isNotEmpty()) {
+                                            "${baseNameInput.trim()} ${curTenorInput.trim()}/${totTenorInput.trim()}"
+                                        } else {
+                                            baseNameInput.trim()
+                                        }
+                                        val sisaAmt = sisaInput.toDoubleOrNull() ?: 0.0
+                                        val finalNotes = if (sisaInput.isNotEmpty()) {
+                                            "Rp" + String.format(Locale.US, "%,.0f", sisaAmt).replace(",", ".")
+                                        } else if (curTenorInput.isNotEmpty() && totTenorInput.isNotEmpty()) {
+                                            val cur = curTenorInput.toIntOrNull() ?: 1
+                                            val tot = totTenorInput.toIntOrNull() ?: 1
+                                            val sisa = tot - cur + 1
+                                            val remainingVal = sisa * (cicilanInput.toDoubleOrNull() ?: 0.0)
+                                            "Rp" + String.format(Locale.US, "%,.0f", remainingVal).replace(",", ".")
+                                        } else ""
+            
+                                        onUpdatePlan(
+                                            plan.copy(
+                                                name = finalName,
+                                                plannedAmount = cicilanInput.toDoubleOrNull() ?: 0.0,
+                                                notes = finalNotes,
+                                                dueDate = dueDateInput.toIntOrNull() ?: 0
+                                            )
+                                        )
+                                        isEditing = false
+                                    },
+                                    colors = ButtonDefaults.buttonColors(containerColor = NeonOrangeAccent)
+                                ) {
+                                    Text("Simpan", color = SoftWhite, fontSize = 12.sp)
+                                }
+                            }
+                        }
                     }
-                    HorizontalDivider(color = DarkBorder, thickness = 0.5.dp)
                 }
             }
         }
@@ -998,7 +1373,8 @@ fun LivingExpensesChecklistCard(
     plans: List<BudgetPlan>,
     transactions: List<Transaction>,
     onToggleCheck: (Transaction) -> Unit,
-    onDeleteTx: (Transaction) -> Unit
+    onDeleteTx: (Transaction) -> Unit,
+    onAddPlan: () -> Unit
 ) {
     Card(
         colors = CardDefaults.cardColors(containerColor = CharcoalSurface),
@@ -1007,24 +1383,34 @@ fun LivingExpensesChecklistCard(
         modifier = Modifier.fillMaxWidth()
     ) {
         Column(modifier = Modifier.padding(16.dp)) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Box(modifier = Modifier.size(4.dp, 16.dp).background(NeonOrangeAccent))
-                Spacer(modifier = Modifier.width(8.dp))
-                Text("Biaya Hidup Checklist", color = SoftWhite, fontWeight = FontWeight.Bold, fontSize = 15.sp)
-                Spacer(modifier = Modifier.width(6.dp))
-                val paidCount = transactions.filter { it.isChecked }.size
-                val totalCount = plans.size
-                Surface(
-                    color = NeonOrangeAccent.copy(alpha = 0.15f),
-                    shape = RoundedCornerShape(6.dp)
-                ) {
-                    Text(
-                        "$paidCount / $totalCount Terbayar",
-                        modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp),
-                        color = NeonOrangeAccent,
-                        fontSize = 11.sp,
-                        fontWeight = FontWeight.Bold
-                    )
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Box(modifier = Modifier.size(4.dp, 16.dp).background(NeonOrangeAccent))
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text("Biaya Hidup Checklist", color = SoftWhite, fontWeight = FontWeight.Bold, fontSize = 15.sp)
+                    Spacer(modifier = Modifier.width(6.dp))
+                    val paidCount = transactions.filter { it.isChecked }.size
+                    val totalCount = plans.size
+                    Surface(
+                        color = NeonOrangeAccent.copy(alpha = 0.15f),
+                        shape = RoundedCornerShape(6.dp)
+                    ) {
+                        Text(
+                            "$paidCount / $totalCount Terbayar",
+                            modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp),
+                            color = NeonOrangeAccent,
+                            fontSize = 11.sp,
+                            fontWeight = FontWeight.Bold
+                        )
+                    }
+                }
+                
+                IconButton(onClick = onAddPlan, modifier = Modifier.size(24.dp)) {
+                    Icon(Icons.Default.Add, contentDescription = "Tambah Biaya Hidup", tint = NeonOrangeAccent, modifier = Modifier.size(20.dp))
                 }
             }
 
@@ -1112,32 +1498,14 @@ fun TransactionAndScanTab(
     isScanning: Boolean,
     scanResult: ReceiptAnalysisResult?,
     userApiKey: String,
-    onScanClick: (ByteArray) -> Unit,
+    onOpenCamera: () -> Unit,
+    onOpenGallery: () -> Unit,
     onConfirmScan: (String, Double, String, String) -> Unit,
     onClearScan: () -> Unit,
     onDeleteTx: (Transaction) -> Unit
 ) {
     val context = LocalContext.current
     val coroutineScope = rememberCoroutineScope()
-
-    // Photo pick launcher
-    val imagePickerLauncher = rememberLauncherForActivityResult(
-        contract = ActivityResultContracts.GetContent()
-    ) { uri: Uri? ->
-        if (uri != null) {
-            try {
-                val inputStream: InputStream? = context.contentResolver.openInputStream(uri)
-                val bytes = inputStream?.readBytes()
-                if (bytes != null) {
-                    onScanClick(bytes)
-                } else {
-                    Toast.makeText(context, "Gagal mengolah file gambar", Toast.LENGTH_SHORT).show()
-                }
-            } catch (e: Exception) {
-                Toast.makeText(context, "Error: ${e.localizedMessage}", Toast.LENGTH_SHORT).show()
-            }
-        }
-    }
 
     LazyColumn(
         modifier = Modifier
@@ -1184,17 +1552,31 @@ fun TransactionAndScanTab(
                         }
                     } else {
                         Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                            // Picker for Real Receipt Camera/Gallery
+                            // Camera Button
                             Button(
-                                onClick = { imagePickerLauncher.launch("image/*") },
+                                onClick = onOpenCamera,
                                 colors = ButtonDefaults.buttonColors(containerColor = PremiumOrange),
                                 shape = RoundedCornerShape(12.dp),
                                 modifier = Modifier.weight(1f)
                             ) {
                                 Row(verticalAlignment = Alignment.CenterVertically) {
-                                    Icon(Icons.Default.Share, contentDescription = null, modifier = Modifier.size(16.dp))
+                                    Icon(Icons.Default.Add, contentDescription = null, modifier = Modifier.size(16.dp))
                                     Spacer(modifier = Modifier.width(6.dp))
-                                    Text("Pilih Foto Nota", fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                                    Text("Kamera", fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                                }
+                            }
+                            
+                            // Picker for Real Receipt Gallery
+                            Button(
+                                onClick = onOpenGallery,
+                                colors = ButtonDefaults.buttonColors(containerColor = PremiumOrange.copy(alpha = 0.8f)),
+                                shape = RoundedCornerShape(12.dp),
+                                modifier = Modifier.weight(1f)
+                            ) {
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    Icon(Icons.Default.Menu, contentDescription = null, modifier = Modifier.size(16.dp))
+                                    Spacer(modifier = Modifier.width(6.dp))
+                                    Text("Galeri", fontSize = 12.sp, fontWeight = FontWeight.Bold)
                                 }
                             }
                         }
@@ -1227,10 +1609,22 @@ fun TransactionAndScanTab(
                 ) {
                     when (scanResult) {
                         is ReceiptAnalysisResult.Success -> {
-                            var editedName by remember(scanResult) { mutableStateOf(scanResult.itemName) }
-                            var editedAmount by remember(scanResult) { mutableStateOf(scanResult.amount.toString()) }
-                            var editedCategory by remember(scanResult) { mutableStateOf(scanResult.category) }
-                            var editedDate by remember(scanResult) { mutableStateOf(scanResult.date) }
+                            data class EditableItem(
+                                val name: MutableState<String>,
+                                val amount: MutableState<String>,
+                                val category: MutableState<String>,
+                                val date: MutableState<String>
+                            )
+                            val editableItems = remember(scanResult) {
+                                scanResult.items.map {
+                                    EditableItem(
+                                        mutableStateOf(it.itemName),
+                                        mutableStateOf(it.amount.toString()),
+                                        mutableStateOf(it.category),
+                                        mutableStateOf(it.date)
+                                    )
+                                }
+                            }
 
                             Card(
                                 colors = CardDefaults.cardColors(containerColor = CharcoalCard),
@@ -1242,56 +1636,66 @@ fun TransactionAndScanTab(
                                     Row(verticalAlignment = Alignment.CenterVertically) {
                                         Icon(Icons.Default.Check, contentDescription = "Success", tint = SoftGreen, modifier = Modifier.size(20.dp))
                                         Spacer(modifier = Modifier.width(8.dp))
-                                        Text("Nota Berhasil Diekstrak!", color = SoftGreen, fontWeight = FontWeight.Bold, fontSize = 14.sp)
+                                        Text("Berhasil Diekstrak (${editableItems.size} data)!", color = SoftGreen, fontWeight = FontWeight.Bold, fontSize = 14.sp)
                                     }
                                     Spacer(modifier = Modifier.height(12.dp))
 
-                                    OutlinedTextField(
-                                        value = editedName,
-                                        onValueChange = { editedName = it },
-                                        label = { Text("Deskripsi Pengeluaran") },
-                                        colors = OutlinedTextFieldDefaults.colors(
-                                            focusedBorderColor = PremiumOrange, 
-                                            unfocusedBorderColor = DarkBorder,
-                                            focusedLabelColor = PremiumOrange,
-                                            focusedTextColor = SoftWhite,
-                                            unfocusedTextColor = SoftWhite
-                                        ),
-                                        modifier = Modifier.fillMaxWidth()
-                                    )
-
-                                    Spacer(modifier = Modifier.height(8.dp))
-
-                                    OutlinedTextField(
-                                        value = editedAmount,
-                                        onValueChange = { editedAmount = it },
-                                        label = { Text("Nominal (Rp)") },
-                                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-                                        colors = OutlinedTextFieldDefaults.colors(
-                                            focusedBorderColor = PremiumOrange, 
-                                            unfocusedBorderColor = DarkBorder,
-                                            focusedLabelColor = PremiumOrange,
-                                            focusedTextColor = SoftWhite,
-                                            unfocusedTextColor = SoftWhite
-                                        ),
-                                        modifier = Modifier.fillMaxWidth()
-                                    )
-
-                                    Spacer(modifier = Modifier.height(8.dp))
-
-                                    OutlinedTextField(
-                                        value = editedCategory,
-                                        onValueChange = { editedCategory = it },
-                                        label = { Text("Kategori") },
-                                        colors = OutlinedTextFieldDefaults.colors(
-                                            focusedBorderColor = PremiumOrange, 
-                                            unfocusedBorderColor = DarkBorder,
-                                            focusedLabelColor = PremiumOrange,
-                                            focusedTextColor = SoftWhite,
-                                            unfocusedTextColor = SoftWhite
-                                        ),
-                                        modifier = Modifier.fillMaxWidth()
-                                    )
+                                    editableItems.forEachIndexed { index, item ->
+                                        Card(
+                                            colors = CardDefaults.cardColors(containerColor = CharcoalSurface),
+                                            modifier = Modifier.fillMaxWidth().padding(bottom = 12.dp),
+                                            border = BorderStroke(1.dp, DarkBorder)
+                                        ) {
+                                            Column(modifier = Modifier.padding(12.dp)) {
+                                                OutlinedTextField(
+                                                    value = item.name.value,
+                                                    onValueChange = { item.name.value = it },
+                                                    label = { Text("Deskripsi Pengeluaran") },
+                                                    colors = OutlinedTextFieldDefaults.colors(
+                                                        focusedBorderColor = PremiumOrange, 
+                                                        unfocusedBorderColor = DarkBorder,
+                                                        focusedLabelColor = PremiumOrange,
+                                                        focusedTextColor = SoftWhite,
+                                                        unfocusedTextColor = SoftWhite
+                                                    ),
+                                                    modifier = Modifier.fillMaxWidth(),
+                                                    singleLine = true
+                                                )
+                                                Spacer(modifier = Modifier.height(8.dp))
+                                                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                                    OutlinedTextField(
+                                                        value = item.amount.value,
+                                                        onValueChange = { item.amount.value = it },
+                                                        label = { Text("Nominal (Rp)") },
+                                                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                                                        colors = OutlinedTextFieldDefaults.colors(
+                                                            focusedBorderColor = PremiumOrange, 
+                                                            unfocusedBorderColor = DarkBorder,
+                                                            focusedLabelColor = PremiumOrange,
+                                                            focusedTextColor = SoftWhite,
+                                                            unfocusedTextColor = SoftWhite
+                                                        ),
+                                                        modifier = Modifier.weight(1f),
+                                                        singleLine = true
+                                                    )
+                                                    OutlinedTextField(
+                                                        value = item.category.value,
+                                                        onValueChange = { item.category.value = it },
+                                                        label = { Text("Kategori") },
+                                                        colors = OutlinedTextFieldDefaults.colors(
+                                                            focusedBorderColor = PremiumOrange, 
+                                                            unfocusedBorderColor = DarkBorder,
+                                                            focusedLabelColor = PremiumOrange,
+                                                            focusedTextColor = SoftWhite,
+                                                            unfocusedTextColor = SoftWhite
+                                                        ),
+                                                        modifier = Modifier.weight(1f),
+                                                        singleLine = true
+                                                    )
+                                                }
+                                            }
+                                        }
+                                    }
 
                                     Spacer(modifier = Modifier.height(14.dp))
 
@@ -1306,9 +1710,12 @@ fun TransactionAndScanTab(
                                         }
                                         Button(
                                             onClick = {
-                                                val amt = editedAmount.toDoubleOrNull() ?: 0.0
-                                                onConfirmScan(editedName, amt, editedCategory, editedDate)
-                                                Toast.makeText(context, "Berhasil ditambahkan ke MacoSheet!", Toast.LENGTH_SHORT).show()
+                                                editableItems.forEach { itm ->
+                                                    val amt = itm.amount.value.toDoubleOrNull() ?: 0.0
+                                                    onConfirmScan(itm.name.value, amt, itm.category.value, itm.date.value)
+                                                }
+                                                Toast.makeText(context, "${editableItems.size} berhasil ditambahkan!", Toast.LENGTH_SHORT).show()
+                                                onClearScan()
                                             },
                                             modifier = Modifier.weight(1.5f),
                                             shape = RoundedCornerShape(10.dp),
@@ -1480,8 +1887,11 @@ fun AnalysisAndSettingsTab(
     billsPlanned: Double,
     expensesPlanned: Double,
     transactions: List<Transaction>,
+    budgetPlans: List<BudgetPlan>,
     userApiKey: String,
-    onSaveApiKey: (String) -> Unit
+    onSaveApiKey: (String) -> Unit,
+    onUpdatePlan: (BudgetPlan) -> Unit,
+    onDeletePlan: (Int) -> Unit
 ) {
     val context = LocalContext.current
     var inputKey by remember { mutableStateOf(userApiKey) }
@@ -1904,36 +2314,38 @@ fun AddTransactionDialog(
                 }
 
                 // Dropdown untuk Pocket
-                Box {
-                    OutlinedTextField(
-                        value = pocket,
-                        onValueChange = {},
-                        readOnly = true,
-                        label = { Text("Sumber Dompet (Pocket)") },
-                        leadingIcon = { Icon(Icons.Default.Star, contentDescription = null, tint = PremiumOrange) },
-                        trailingIcon = { Icon(Icons.Default.ArrowDropDown, contentDescription = null, tint = PremiumOrange) },
-                        colors = OutlinedTextFieldDefaults.colors(
-                            focusedTextColor = SoftWhite, unfocusedTextColor = SoftWhite,
-                            focusedBorderColor = PremiumOrange, unfocusedBorderColor = DarkBorder,
-                            focusedLabelColor = PremiumOrange
-                        ),
-                        modifier = Modifier.fillMaxWidth()
-                    )
-                    Box(modifier = Modifier.matchParentSize().clickable { showPocketMenu = true })
-                    
-                    DropdownMenu(
-                        expanded = showPocketMenu,
-                        onDismissRequest = { showPocketMenu = false },
-                        modifier = Modifier.background(CharcoalCard)
-                    ) {
-                        pockets.forEach { p ->
-                            DropdownMenuItem(
-                                text = { Text(p, color = SoftWhite) },
-                                onClick = {
-                                    pocket = p
-                                    showPocketMenu = false
-                                }
-                            )
+                if (type != "Pemasukan") {
+                    Box {
+                        OutlinedTextField(
+                            value = pocket,
+                            onValueChange = {},
+                            readOnly = true,
+                            label = { Text("Sumber Dompet (Pocket)") },
+                            leadingIcon = { Icon(Icons.Default.Star, contentDescription = null, tint = PremiumOrange) },
+                            trailingIcon = { Icon(Icons.Default.ArrowDropDown, contentDescription = null, tint = PremiumOrange) },
+                            colors = OutlinedTextFieldDefaults.colors(
+                                focusedTextColor = SoftWhite, unfocusedTextColor = SoftWhite,
+                                focusedBorderColor = PremiumOrange, unfocusedBorderColor = DarkBorder,
+                                focusedLabelColor = PremiumOrange
+                            ),
+                            modifier = Modifier.fillMaxWidth()
+                        )
+                        Box(modifier = Modifier.matchParentSize().clickable { showPocketMenu = true })
+                        
+                        DropdownMenu(
+                            expanded = showPocketMenu,
+                            onDismissRequest = { showPocketMenu = false },
+                            modifier = Modifier.background(CharcoalCard)
+                        ) {
+                            pockets.forEach { p ->
+                                DropdownMenuItem(
+                                    text = { Text(p, color = SoftWhite) },
+                                    onClick = {
+                                        pocket = p
+                                        showPocketMenu = false
+                                    }
+                                )
+                            }
                         }
                     }
                 }
@@ -2041,91 +2453,220 @@ fun AddTransactionDialog(
 // Dialog Add Plan Detail
 @Composable
 fun AddPlanDialog(
+    initialCategory: String? = null,
+    lockedCategory: Boolean = false,
     onDismiss: () -> Unit,
-    onSave: (String, Double, String, String) -> Unit
+    onSave: (String, Double, String, String, Int) -> Unit
 ) {
     var name by remember { mutableStateOf("") }
     var amountStr by remember { mutableStateOf("") }
-    var category by remember { mutableStateOf("Pengeluaran") }
+    var category by remember { mutableStateOf(initialCategory ?: "Pengeluaran") }
     var notes by remember { mutableStateOf("") }
 
-    val categories = listOf("Pemasukan", "Tabungan", "Tagihan", "Pengeluaran")
+    // Specialized Tagihan inputs
+    var tenorCurrent by remember { mutableStateOf("") }
+    var tenorTotal by remember { mutableStateOf("") }
+    var sisaPokokStr by remember { mutableStateOf("") }
+    var dueDateStr by remember { mutableStateOf("") }
+
+    val categories = if (lockedCategory) listOf(category) else listOf("Pemasukan", "Tabungan", "Pengeluaran")
     var showCatMenu by remember { mutableStateOf(false) }
 
     AlertDialog(
         onDismissRequest = onDismiss,
         containerColor = CharcoalSurface,
-        title = { Text("Tambah Target Anggaran (Plan)", color = SoftWhite, fontWeight = FontWeight.Bold) },
+        title = { Text(if (category == "Tagihan") "Tambah Tagihan & Cicilan" else "Tambah Target Anggaran (Plan)", color = SoftWhite, fontWeight = FontWeight.Bold) },
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                Box {
-                    Button(
-                        onClick = { showCatMenu = true },
-                        colors = ButtonDefaults.buttonColors(containerColor = CharcoalCard),
-                        modifier = Modifier.fillMaxWidth()
-                    ) {
-                        Text("Klasifikasi Rencana: $category", color = SoftWhite)
-                    }
-                    DropdownMenu(
-                        expanded = showCatMenu,
-                        onDismissRequest = { showCatMenu = false },
-                        modifier = Modifier.background(CharcoalCard)
-                    ) {
-                        categories.forEach { c ->
-                            DropdownMenuItem(
-                                text = { Text(c, color = SoftWhite) },
-                                onClick = {
-                                    category = c
-                                    showCatMenu = false
-                                }
-                            )
+                if (!lockedCategory) {
+                    Box {
+                        Button(
+                            onClick = { showCatMenu = true },
+                            colors = ButtonDefaults.buttonColors(containerColor = CharcoalCard),
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Text("Klasifikasi Rencana: $category", color = SoftWhite)
+                        }
+                        DropdownMenu(
+                            expanded = showCatMenu,
+                            onDismissRequest = { showCatMenu = false },
+                            modifier = Modifier.background(CharcoalCard)
+                        ) {
+                            categories.forEach { c ->
+                                DropdownMenuItem(
+                                    text = { Text(c, color = SoftWhite) },
+                                    onClick = {
+                                        category = c
+                                        showCatMenu = false
+                                    }
+                                )
+                            }
                         }
                     }
                 }
 
-                OutlinedTextField(
-                    value = name,
-                    onValueChange = { name = it },
-                    label = { Text("Nama Rencana Anggaran") },
-                    colors = OutlinedTextFieldDefaults.colors(
-                        focusedTextColor = SoftWhite, unfocusedTextColor = SoftWhite,
-                        focusedBorderColor = PremiumOrange, unfocusedBorderColor = DarkBorder,
-                        focusedLabelColor = PremiumOrange
-                    ),
-                    modifier = Modifier.fillMaxWidth()
-                )
+                if (category == "Tagihan") {
+                    OutlinedTextField(
+                        value = name,
+                        onValueChange = { name = it },
+                        label = { Text("Nama Tagihan (e.g. Spinjam, KPR, Paylater)") },
+                        colors = OutlinedTextFieldDefaults.colors(
+                            focusedTextColor = SoftWhite, unfocusedTextColor = SoftWhite,
+                            focusedBorderColor = PremiumOrange, unfocusedBorderColor = DarkBorder,
+                            focusedLabelColor = PremiumOrange
+                        ),
+                        modifier = Modifier.fillMaxWidth()
+                    )
 
-                OutlinedTextField(
-                    value = amountStr,
-                    onValueChange = { amountStr = it },
-                    label = { Text("Target Anggaran (Rp)") },
-                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-                    colors = OutlinedTextFieldDefaults.colors(
-                        focusedTextColor = SoftWhite, unfocusedTextColor = SoftWhite,
-                        focusedBorderColor = PremiumOrange, unfocusedBorderColor = DarkBorder,
-                        focusedLabelColor = PremiumOrange
-                    ),
-                    modifier = Modifier.fillMaxWidth()
-                )
+                    OutlinedTextField(
+                        value = amountStr,
+                        onValueChange = { amountStr = it },
+                        label = { Text("Cicilan Per Bulan (Rp)") },
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                        colors = OutlinedTextFieldDefaults.colors(
+                            focusedTextColor = SoftWhite, unfocusedTextColor = SoftWhite,
+                            focusedBorderColor = PremiumOrange, unfocusedBorderColor = DarkBorder,
+                            focusedLabelColor = PremiumOrange
+                        ),
+                        modifier = Modifier.fillMaxWidth()
+                    )
 
-                OutlinedTextField(
-                    value = notes,
-                    onValueChange = { notes = it },
-                    label = { Text("Batas Sisa / Memo (Opsional)") },
-                    colors = OutlinedTextFieldDefaults.colors(
-                        focusedTextColor = SoftWhite, unfocusedTextColor = SoftWhite,
-                        focusedBorderColor = PremiumOrange, unfocusedBorderColor = DarkBorder,
-                        focusedLabelColor = PremiumOrange
-                    ),
-                    modifier = Modifier.fillMaxWidth()
-                )
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(10.dp)
+                    ) {
+                        OutlinedTextField(
+                            value = tenorCurrent,
+                            onValueChange = { tenorCurrent = it },
+                            label = { Text("Tenor Ke") },
+                            placeholder = { Text("Cth: 4") },
+                            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                            colors = OutlinedTextFieldDefaults.colors(
+                                focusedTextColor = SoftWhite, unfocusedTextColor = SoftWhite,
+                                focusedBorderColor = PremiumOrange, unfocusedBorderColor = DarkBorder,
+                                focusedLabelColor = PremiumOrange
+                            ),
+                            modifier = Modifier.weight(1f)
+                        )
+
+                        OutlinedTextField(
+                            value = tenorTotal,
+                            onValueChange = { tenorTotal = it },
+                            label = { Text("Total Tenor") },
+                            placeholder = { Text("Cth: 12") },
+                            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                            colors = OutlinedTextFieldDefaults.colors(
+                                focusedTextColor = SoftWhite, unfocusedTextColor = SoftWhite,
+                                focusedBorderColor = PremiumOrange, unfocusedBorderColor = DarkBorder,
+                                focusedLabelColor = PremiumOrange
+                            ),
+                            modifier = Modifier.weight(1f)
+                        )
+                    }
+
+                    OutlinedTextField(
+                        value = sisaPokokStr,
+                        onValueChange = { sisaPokokStr = it },
+                        label = { Text("Total Sisa Tagihan (Rp) - Opsional") },
+                        placeholder = { Text("Dihitung otomatis jika kosong") },
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                        colors = OutlinedTextFieldDefaults.colors(
+                            focusedTextColor = SoftWhite, unfocusedTextColor = SoftWhite,
+                            focusedBorderColor = PremiumOrange, unfocusedBorderColor = DarkBorder,
+                            focusedLabelColor = PremiumOrange
+                        ),
+                        modifier = Modifier.fillMaxWidth()
+                    )
+
+                    OutlinedTextField(
+                        value = dueDateStr,
+                        onValueChange = { input ->
+                            if (input.isEmpty() || (input.toIntOrNull() in 1..31)) {
+                                dueDateStr = input
+                            }
+                        },
+                        label = { Text("Tanggal Jatuh Tempo Bulanan (1-31) - Opsional") },
+                        placeholder = { Text("Cth: 10") },
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                        colors = OutlinedTextFieldDefaults.colors(
+                            focusedTextColor = SoftWhite, unfocusedTextColor = SoftWhite,
+                            focusedBorderColor = PremiumOrange, unfocusedBorderColor = DarkBorder,
+                            focusedLabelColor = PremiumOrange
+                        ),
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                } else {
+                    OutlinedTextField(
+                        value = name,
+                        onValueChange = { name = it },
+                        label = { Text("Nama Rencana Anggaran") },
+                        colors = OutlinedTextFieldDefaults.colors(
+                            focusedTextColor = SoftWhite, unfocusedTextColor = SoftWhite,
+                            focusedBorderColor = PremiumOrange, unfocusedBorderColor = DarkBorder,
+                            focusedLabelColor = PremiumOrange
+                        ),
+                        modifier = Modifier.fillMaxWidth()
+                    )
+
+                    OutlinedTextField(
+                        value = amountStr,
+                        onValueChange = { amountStr = it },
+                        label = { Text("Target Anggaran (Rp)") },
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                        colors = OutlinedTextFieldDefaults.colors(
+                            focusedTextColor = SoftWhite, unfocusedTextColor = SoftWhite,
+                            focusedBorderColor = PremiumOrange, unfocusedBorderColor = DarkBorder,
+                            focusedLabelColor = PremiumOrange
+                        ),
+                        modifier = Modifier.fillMaxWidth()
+                    )
+
+                    OutlinedTextField(
+                        value = notes,
+                        onValueChange = { notes = it },
+                        label = { Text("Batas Sisa / Memo (Opsional)") },
+                        colors = OutlinedTextFieldDefaults.colors(
+                            focusedTextColor = SoftWhite, unfocusedTextColor = SoftWhite,
+                            focusedBorderColor = PremiumOrange, unfocusedBorderColor = DarkBorder,
+                            focusedLabelColor = PremiumOrange
+                        ),
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                }
             }
         },
         confirmButton = {
             Button(
                 onClick = {
                     val amt = amountStr.toDoubleOrNull() ?: 0.0
-                    onSave(name, amt, category, notes)
+                    val finalName = if (category == "Tagihan" && tenorCurrent.isNotEmpty() && tenorTotal.isNotEmpty()) {
+                        "$name $tenorCurrent/$tenorTotal"
+                    } else {
+                        name
+                    }
+
+                    val finalNotes = if (category == "Tagihan") {
+                        if (sisaPokokStr.isNotEmpty()) {
+                            "Rp" + String.format(Locale.US, "%,.0f", sisaPokokStr.toDoubleOrNull() ?: 0.0).replace(",", ".")
+                        } else if (tenorCurrent.isNotEmpty() && tenorTotal.isNotEmpty()) {
+                            val cur = tenorCurrent.toIntOrNull() ?: 1
+                            val tot = tenorTotal.toIntOrNull() ?: 1
+                            val calculated = amt * (tot - cur + 1)
+                            "Rp" + String.format(Locale.US, "%,.0f", calculated).replace(",", ".")
+                        } else {
+                            notes
+                        }
+                    } else {
+                        notes
+                    }
+
+                    val finalDueDate = if (category == "Tagihan") {
+                        dueDateStr.toIntOrNull() ?: 0
+                    } else {
+                        0
+                    }
+
+                    onSave(finalName, amt, category, finalNotes, finalDueDate)
                 },
                 colors = ButtonDefaults.buttonColors(containerColor = PremiumOrange)
             ) {
@@ -2157,3 +2698,237 @@ fun Modifier.dashPathEffectModifier(): Modifier = drawBehind {
         currentX += dashWidth + gapWidth
     }
 }
+
+// ==================== BILL DUE ALARM UTILITIES ====================
+
+data class DueDateStatus(
+    val statusText: String,
+    val alertColorRef: String, // "red", "yellow", "green", "none"
+    val daysLeft: Int,
+    val isOverdue: Boolean
+)
+
+fun parseMonthYear(monthYearStr: String): Pair<Int, Int>? {
+    val parts = monthYearStr.trim().split(" ")
+    if (parts.size != 2) return null
+    val monthName = parts[0].lowercase(Locale.ROOT)
+    val year = parts[1].toIntOrNull() ?: return null
+    val month = when {
+        monthName.startsWith("jan") -> 1
+        monthName.startsWith("feb") -> 2
+        monthName.startsWith("mar") -> 3
+        monthName.startsWith("apr") -> 4
+        monthName.startsWith("mei") || monthName.startsWith("may") -> 5
+        monthName.startsWith("jun") -> 6
+        monthName.startsWith("jul") -> 7
+        monthName.startsWith("agu") || monthName.startsWith("aug") -> 8
+        monthName.startsWith("sep") -> 9
+        monthName.startsWith("okt") || monthName.startsWith("oct") -> 10
+        monthName.startsWith("nov") -> 11
+        monthName.startsWith("des") || monthName.startsWith("dec") -> 12
+        else -> 1
+    }
+    return Pair(month, year)
+}
+
+fun getDueDateStatus(plan: BudgetPlan, isChecked: Boolean): DueDateStatus? {
+    if (plan.dueDate <= 0) return null
+    
+    val parsed = parseMonthYear(plan.monthYear) ?: return null
+    val planMonth = parsed.first
+    val planYear = parsed.second
+    
+    val planCalendar = java.util.Calendar.getInstance().apply {
+        clear()
+        set(java.util.Calendar.YEAR, planYear)
+        set(java.util.Calendar.MONTH, planMonth - 1)
+        val maxDay = getActualMaximum(java.util.Calendar.DAY_OF_MONTH)
+        set(java.util.Calendar.DAY_OF_MONTH, plan.dueDate.coerceAtMost(maxDay))
+        set(java.util.Calendar.HOUR_OF_DAY, 0)
+        set(java.util.Calendar.MINUTE, 0)
+        set(java.util.Calendar.SECOND, 0)
+        set(java.util.Calendar.MILLISECOND, 0)
+    }
+    
+    val todayCalendar = java.util.Calendar.getInstance().apply {
+        set(java.util.Calendar.HOUR_OF_DAY, 0)
+        set(java.util.Calendar.MINUTE, 0)
+        set(java.util.Calendar.SECOND, 0)
+        set(java.util.Calendar.MILLISECOND, 0)
+    }
+    
+    val diffInMillis = planCalendar.timeInMillis - todayCalendar.timeInMillis
+    val daysDiff = (diffInMillis / (24 * 60 * 60 * 1000)).toInt()
+    
+    return when {
+        isChecked -> {
+            DueDateStatus(
+                statusText = "Lunas",
+                alertColorRef = "green",
+                daysLeft = daysDiff,
+                isOverdue = false
+            )
+        }
+        daysDiff < 0 -> {
+            DueDateStatus(
+                statusText = "Terlambat ${-daysDiff} hari",
+                alertColorRef = "red",
+                daysLeft = daysDiff,
+                isOverdue = true
+            )
+        }
+        daysDiff == 0 -> {
+            DueDateStatus(
+                statusText = "Jatuh tempo HARI INI",
+                alertColorRef = "red",
+                daysLeft = daysDiff,
+                isOverdue = false
+            )
+        }
+        daysDiff == 1 -> {
+            DueDateStatus(
+                statusText = "Besok jatuh tempo",
+                alertColorRef = "yellow",
+                daysLeft = daysDiff,
+                isOverdue = false
+            )
+        }
+        daysDiff <= 3 -> {
+            DueDateStatus(
+                statusText = "${daysDiff} hari lagi",
+                alertColorRef = "yellow",
+                daysLeft = daysDiff,
+                isOverdue = false
+            )
+        }
+        else -> {
+            DueDateStatus(
+                statusText = "Jatuh tempo tgl ${plan.dueDate}",
+                alertColorRef = "none",
+                daysLeft = daysDiff,
+                isOverdue = false
+            )
+        }
+    }
+}
+
+@Composable
+fun BillDueAlertCard(
+    plans: List<BudgetPlan>,
+    transactions: List<Transaction>
+) {
+    if (plans.isEmpty()) return
+
+    val criticalBills = plans.mapNotNull { plan ->
+        val billingTx = transactions.firstOrNull { it.categoryName == plan.name }
+        val isChecked = billingTx?.isChecked ?: false
+        if (!isChecked) {
+            val statusInfo = getDueDateStatus(plan, isChecked = false)
+            if (statusInfo != null && (statusInfo.isOverdue || statusInfo.daysLeft <= 1)) {
+                Pair(plan, statusInfo)
+            } else {
+                null
+            }
+        } else {
+            null
+        }
+    }
+
+    if (criticalBills.isEmpty()) return
+
+    val sortedCritical = criticalBills.sortedBy { it.second.daysLeft }
+
+    Card(
+        colors = CardDefaults.cardColors(containerColor = CharcoalSurface),
+        shape = RoundedCornerShape(16.dp),
+        border = BorderStroke(1.2.dp, CrimsonRed),
+        modifier = Modifier.fillMaxWidth()
+    ) {
+        Column(modifier = Modifier.padding(16.dp)) {
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Icon(
+                    imageVector = Icons.Default.Warning,
+                    contentDescription = "Alert Due",
+                    tint = SoftRed,
+                    modifier = Modifier.size(20.dp)
+                )
+                Text(
+                    "Alarm Jatuh Tempo Tagihan",
+                    color = SoftWhite,
+                    fontWeight = FontWeight.ExtraBold,
+                    fontSize = 14.sp
+                )
+                Spacer(modifier = Modifier.weight(1f))
+                Surface(
+                    color = CrimsonRed.copy(alpha = 0.15f),
+                    shape = RoundedCornerShape(6.dp)
+                ) {
+                    Text(
+                        "${sortedCritical.size} Penting",
+                        color = SoftWhite,
+                        fontSize = 10.sp,
+                        fontWeight = FontWeight.Bold,
+                        modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                    )
+                }
+            }
+            
+            Spacer(modifier = Modifier.height(10.dp))
+            Text(
+                "Terdeteksi tagihan jatuh tempo yang belum dilunasi. Segera selesaikan pembayaran untuk mencegah bunga/denda.",
+                color = MutedText,
+                fontSize = 11.sp,
+                lineHeight = 15.sp
+            )
+            Spacer(modifier = Modifier.height(12.dp))
+
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                sortedCritical.forEach { (plan, status) ->
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .background(CharcoalCard, RoundedCornerShape(10.dp))
+                            .border(BorderStroke(0.5.dp, DarkBorder), RoundedCornerShape(10.dp))
+                            .padding(10.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.SpaceBetween
+                    ) {
+                        Column {
+                            Text(
+                                plan.name,
+                                color = SoftWhite,
+                                fontWeight = FontWeight.Bold,
+                                fontSize = 12.sp
+                            )
+                            Spacer(modifier = Modifier.height(2.dp))
+                            Text(
+                                "Cicilan: ${formatRupiah(plan.plannedAmount)}",
+                                color = MutedText,
+                                fontSize = 10.sp
+                            )
+                        }
+
+                        Surface(
+                            color = if (status.isOverdue) CrimsonRed.copy(alpha = 0.2f) else SoftYellow.copy(alpha = 0.2f),
+                            border = BorderStroke(0.5.dp, if (status.isOverdue) CrimsonRed else SoftYellow),
+                            shape = RoundedCornerShape(6.dp)
+                        ) {
+                            Text(
+                                status.statusText.uppercase(Locale.ROOT),
+                                color = if (status.isOverdue) SoftRed else SoftYellow,
+                                fontSize = 9.sp,
+                                fontWeight = FontWeight.ExtraBold,
+                                modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
+                            )
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+

@@ -5,18 +5,22 @@ import android.os.Build
 import android.os.Bundle
 import android.util.Log
 import android.widget.Toast
-import androidx.activity.ComponentActivity
+import androidx.fragment.app.FragmentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.viewModels
 import androidx.core.content.ContextCompat
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.setValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
 import com.example.ui.MainScreen
 import com.example.ui.FinanceViewModel
 import com.example.ui.NotificationHelper
 import com.example.ui.theme.MyApplicationTheme
 
-class MainActivity : ComponentActivity() {
+class MainActivity : FragmentActivity() {
 
     // Retrieve active FinanceViewModel
     private val viewModel: FinanceViewModel by viewModels()
@@ -61,7 +65,13 @@ class MainActivity : ComponentActivity() {
 
         setContent {
             MyApplicationTheme {
-                MainScreen(viewModel = viewModel)
+                var isAuthenticated by remember { mutableStateOf(false) }
+
+                if (isAuthenticated) {
+                    MainScreen(viewModel = viewModel)
+                } else {
+                    com.example.ui.AuthScreen(onUnlock = { isAuthenticated = true })
+                }
             }
         }
     }

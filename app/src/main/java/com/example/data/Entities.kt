@@ -31,7 +31,8 @@ data class BudgetPlan(
     val category: String, // "Pemasukan", "Tabungan", "Pengeluaran", "Tagihan"
     val name: String, // e.g. "Gaji", "Makan", "Rekening BCA"
     val plannedAmount: Double,
-    val notes: String = ""
+    val notes: String = "",
+    val dueDate: Int = 0 // day of month 1-31, 0 means none
 )
 
 @Dao
