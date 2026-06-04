@@ -14,6 +14,9 @@ import androidx.compose.animation.scaleIn
 import androidx.compose.animation.scaleOut
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.Image
+import androidx.compose.ui.res.painterResource
+import com.example.R
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -436,6 +439,15 @@ fun FinanceHeader(
     val monthsList = listOf("Januari", "Februari", "Maret", "April", "Mei", "Juni", "Juli", "Agustus", "September", "Oktober", "November", "Desember")
     val yearsList = listOf(2025, 2026, 2027, 2028)
 
+    val context = LocalContext.current
+    val logoResId = remember(context) {
+        val id1 = context.resources.getIdentifier("maco_logo", "drawable", context.packageName)
+        if (id1 != 0) id1 else {
+            val id2 = context.resources.getIdentifier("logo", "drawable", context.packageName)
+            if (id2 != 0) id2 else R.drawable.maco_logo_vector
+        }
+    }
+
     Row(
         modifier = Modifier
             .fillMaxWidth()
@@ -446,19 +458,13 @@ fun FinanceHeader(
     ) {
         // Logo and title
         Row(verticalAlignment = Alignment.CenterVertically) {
-            Box(
+            Image(
+                painter = painterResource(id = logoResId),
+                contentDescription = "Logo MACO",
                 modifier = Modifier
-                    .size(36.dp)
-                    .clip(RoundedCornerShape(8.dp))
-                    .background(
-                        Brush.linearGradient(
-                            listOf(PremiumOrange, NeonOrangeAccent)
-                        )
-                    ),
-                contentAlignment = Alignment.Center
-            ) {
-                Text("M", color = SoftWhite, fontWeight = FontWeight.Bold, fontSize = 20.sp)
-            }
+                    .size(42.dp)
+                    .clip(CircleShape)
+            )
             Spacer(modifier = Modifier.width(10.dp))
             Column {
                 Text(

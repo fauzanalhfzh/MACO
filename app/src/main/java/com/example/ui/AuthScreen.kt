@@ -27,6 +27,10 @@ import androidx.core.content.ContextCompat
 import androidx.fragment.app.FragmentActivity
 import kotlinx.coroutines.launch
 
+import androidx.compose.foundation.Image
+import androidx.compose.ui.res.painterResource
+import com.example.R
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun AuthScreen(onUnlock: () -> Unit) {
@@ -91,6 +95,14 @@ fun AuthScreen(onUnlock: () -> Unit) {
     val buttonText = if (isLight) Color(0xFFFFFFFF) else Color(0xFF101014)
     val iconBg = if (isLight) Color(0xFFE2DDD5) else Color(0xFF282830)
 
+    val logoResId = remember(context) {
+        val id1 = context.resources.getIdentifier("maco_logo", "drawable", context.packageName)
+        if (id1 != 0) id1 else {
+            val id2 = context.resources.getIdentifier("logo", "drawable", context.packageName)
+            if (id2 != 0) id2 else R.drawable.maco_logo_vector
+        }
+    }
+
     Surface(
         color = bgCol,
         modifier = Modifier.fillMaxSize()
@@ -102,12 +114,11 @@ fun AuthScreen(onUnlock: () -> Unit) {
                 .fillMaxSize()
                 .padding(32.dp)
         ) {
-            Icon(
-                imageVector = Icons.Default.Lock,
-                contentDescription = null,
-                tint = brandOrange,
+            Image(
+                painter = painterResource(id = logoResId),
+                contentDescription = "Logo MACO",
                 modifier = Modifier
-                    .size(80.dp)
+                    .size(110.dp)
                     .padding(bottom = 16.dp)
             )
 
