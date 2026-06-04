@@ -54,16 +54,35 @@ object GeminiService {
         
         val prompt = """
             Anda adalah asisten keuangan pribadi cerdas bernama MACO.
-            Analisis gambar nota/resi/kuitansi pengeluaran berikut dengan sangat teliti.
-            Ekstrak data berikut untuk SETIAP transaksi yang Anda temukan (bisa lebih dari satu transaksi):
-            1. "item_name": Nama toko, deskripsi barang utama, atau pekerjaan. Maksimal 3 kata.
-            2. "amount": Jumlah pengeluaran total nominal riil dalam angka double/desimal.
-            3. "category": Kategori pengeluaran. Anda WAJIB memilih HANYA salah satu: Makan, Kebutuhan Wajib, Wifi, Olahraga, Belanja, Service, Transportasi, Hiburan.
-            4. "date": Tanggal transaksi dalam format YYYY-MM-DD. Jika tidak terlihat, gunakan tanggal hari ini.
+            Analisis dokumen/foto/nota/tabel spreadsheet pengeluaran berikut dengan sangat teliti.
+            
+            Tugas Anda adalah:
+            1. Bongkar transaksi ke tingkat barang / baris detail terkecil (Detail Line Items). JANGAN hanya mengambil nilai Total Akhir atau ringkasannya!
+               - Jika gambar adalah Resi/Nota/Kuitansi Belanja Ritel: Ekstrak SETIAP barang/jasa yang dibeli sebagai transaksi terpisah. Berikan nama item dengan contoh format "[NamaToko]: [NamaBarang]". Contoh: "Indomaret: Susu Ultra", "Alfamart: Sabun Cair".
+               - Jika gambar adalah Spreadsheet/Tabel Pencatatan (seperti log pengeluaran Excel/Google Sheets): Ekstrak SETIAP baris transaksi secara terpisah. Ambil nama barang, kategori, nominal, dan tanggal per baris yang bersangkutan secara utuh.
+            
+            2. Untuk SETIAP item/baris pengeluaran yang ditemukan, buat satu objek transaksi dengan struktur:
+               - "item_name": String. Berikan deskripsi detail barang yang ringkas tapi jelas (maksimal 4 kata). Contoh: "Kopi Janji Jiwa", "Ayam Droasting", "Sewa Lapangan Badminton", "GoJek Ride".
+               - "amount": Double. Harga nominal riil pengeluaran untuk item/baris tersebut setelah diskon/pajak per baris jika ada. Pastikan angka desimal murni tanpa simbol mata uang ("Rp", dll) atau titik/koma pemisah ribuan.
+               - "category": Kategori pengeluaran. Anda WAJIB memetakan barang tersebut ke HANYA salah satu dari kategori berikut:
+                 * "Makan" (makanan, minuman, restoran, kafe, kopi, cemilan, bahan masakan)
+                 * "Kebutuhan Wajib" (sewa kos, kontrakan, listrik, air, asuransi wajib, pajak)
+                 * "Wifi" (internet bulanan, kuota data, pulsa telepon)
+                 * "Olahraga" (keanggotaan gym, sewa lapangan, pembelian perlengkapan olahraga)
+                 * "Belanja" (belanja harian/grocery, sabun, deterjen, pakaian, kebutuhan rumah tangga non-makanan)
+                 * "Service" (bengkel kendaraan, servis AC, reparasi gadget, cuci motor/mobil)
+                 * "Transportasi" (bensin/pertalite, tarif tol, parkir, ojek online, tiket pesawat/kereta)
+                 * "Hiburan" (nonton bioskop, tempat wisata, langganan streaming/Netflix, game top-up, rekreasional)
+               - "date": Tanggal transaksi dalam format YYYY-MM-DD. Jika tanggal baris tercantum (misal di Spreadsheet), gunakan tanggal tersebut. Jika tidak tercantum atau kabur di nota belanja, gunakan tanggal hari ini atau tanggal terdekat yang masuk akal.
 
-            Anda harus mengembalikan respon HANYA berupa text format JSON array solid sederhana. Jangan dibungkus ```json.
+            Anda harus mendaftarkan SEMUANYA dalam satu JSON array yang rapi. Jangan dibungkus ```json.
             Contoh output:
-            [{"item_name": "Makan Bakso Jono", "amount": 45000.0, "category": "Makan", "date": "2026-05-28"}]
+            [
+              {"item_name": "Indomaret: Susu Ultra", "amount": 18500.0, "category": "Makan", "date": "2026-06-01"},
+              {"item_name": "Sewa Lapang Badminton", "amount": 10000.0, "category": "Olahraga", "date": "2026-06-01"},
+              {"item_name": "Ayam Droasting", "amount": 50000.0, "category": "Makan", "date": "2026-06-01"},
+              {"item_name": "Bayar Kos Jono", "amount": 650000.0, "category": "Kebutuhan Wajib", "date": "2026-06-01"}
+            ]
         """.trimIndent()
 
         try {

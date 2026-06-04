@@ -73,6 +73,7 @@ fun MainScreen(viewModel: FinanceViewModel) {
     val isScanning by viewModel.isScanning.collectAsState()
     val scanResult by viewModel.scanResult.collectAsState()
     val userApiKey by viewModel.userApiKey.collectAsState()
+    val isLightTheme by viewModel.isLightTheme.collectAsState()
 
     // Compute metrics
     val incomeActual = transactions.filter { it.type == "Pemasukan" }.sumOf { it.amount }
@@ -193,6 +194,7 @@ fun MainScreen(viewModel: FinanceViewModel) {
                         FloatingActionButton(
                             onClick = { 
                                 showFabMenu = false
+                                currentTab = 1
                                 takePictureLauncher.launch(cameraUri) 
                             },
                             containerColor = CharcoalSurface,
@@ -205,6 +207,7 @@ fun MainScreen(viewModel: FinanceViewModel) {
                         FloatingActionButton(
                             onClick = { 
                                 showFabMenu = false
+                                currentTab = 1
                                 imagePickerLauncher.launch("image/*") 
                             },
                             containerColor = CharcoalSurface,
@@ -304,7 +307,9 @@ fun MainScreen(viewModel: FinanceViewModel) {
                     userApiKey = userApiKey,
                     onSaveApiKey = { viewModel.saveUserApiKey(it) },
                     onUpdatePlan = { viewModel.addBudgetPlan(it) },
-                    onDeletePlan = { viewModel.deleteBudgetPlan(it) }
+                    onDeletePlan = { viewModel.deleteBudgetPlan(it) },
+                    isLightTheme = isLightTheme,
+                    onToggleTheme = { viewModel.saveThemePreference(it) }
                 )
             }
         }
@@ -1891,7 +1896,9 @@ fun AnalysisAndSettingsTab(
     userApiKey: String,
     onSaveApiKey: (String) -> Unit,
     onUpdatePlan: (BudgetPlan) -> Unit,
-    onDeletePlan: (Int) -> Unit
+    onDeletePlan: (Int) -> Unit,
+    isLightTheme: Boolean,
+    onToggleTheme: (Boolean) -> Unit
 ) {
     val context = LocalContext.current
     var inputKey by remember { mutableStateOf(userApiKey) }
@@ -2164,6 +2171,68 @@ fun AnalysisAndSettingsTab(
                             modifier = Modifier.weight(1f)
                         ) {
                             Text("Nyalakan Alarm", fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                        }
+                    }
+                }
+            }
+        }
+
+        // --- 3.8 VISUAL THEME SELECTION ---
+        item {
+            Card(
+                colors = CardDefaults.cardColors(containerColor = CharcoalSurface),
+                shape = RoundedCornerShape(16.dp),
+                border = BorderStroke(1.dp, DarkBorder),
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Column(modifier = Modifier.padding(16.dp)) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Icon(Icons.Default.Settings, contentDescription = null, tint = PremiumOrange)
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text("Pengaturan Tema Tampilan Visual", color = SoftWhite, fontWeight = FontWeight.Bold, fontSize = 14.sp)
+                    }
+
+                    Spacer(modifier = Modifier.height(8.dp))
+                    Text(
+                        "Ubah tema aplikasi MACO agar sesuai dengan kenyamanan mata Anda. Pilih tema gelap premium untuk menghemat daya baterai, atau tema terang kertas/linen yang ramah di bawah terik matahari.",
+                        color = MutedText,
+                        fontSize = 11.sp,
+                        lineHeight = 16.sp
+                    )
+
+                    Spacer(modifier = Modifier.height(14.dp))
+
+                    Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                        Button(
+                            onClick = { onToggleTheme(false) },
+                            colors = ButtonDefaults.buttonColors(
+                                containerColor = if (!isLightTheme) PremiumOrange else CharcoalCard
+                            ),
+                            shape = RoundedCornerShape(12.dp),
+                            modifier = Modifier.weight(1f)
+                        ) {
+                            Text(
+                                text = "🌙 Tema Gelap",
+                                fontSize = 12.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = if (!isLightTheme) CharcoalSurface else MutedText
+                            )
+                        }
+
+                        Button(
+                            onClick = { onToggleTheme(true) },
+                            colors = ButtonDefaults.buttonColors(
+                                containerColor = if (isLightTheme) PremiumOrange else CharcoalCard
+                            ),
+                            shape = RoundedCornerShape(12.dp),
+                            modifier = Modifier.weight(1f)
+                        ) {
+                            Text(
+                                text = "☀️ Tema Terang",
+                                fontSize = 12.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = if (isLightTheme) CharcoalSurface else MutedText
+                            )
                         }
                     }
                 }

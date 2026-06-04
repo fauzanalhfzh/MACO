@@ -82,8 +82,17 @@ fun AuthScreen(onUnlock: () -> Unit) {
         }
     }
 
+    val isLight = com.example.ui.theme.isLightThemeGlobal
+    val bgCol = if (isLight) Color(0xFFF7F4F0) else Color(0xFF101014)
+    val textPrimary = if (isLight) Color(0xFF2C2520) else Color(0xFFF5F5F5)
+    val textMuted = if (isLight) Color(0xFF7A7067) else Color(0xFFA0A0AA)
+    val brandOrange = if (isLight) Color(0xFFD35A11) else Color(0xFFFFB347)
+    val inputBorder = if (isLight) Color(0xFFE2DDD5) else Color(0xFF282830)
+    val buttonText = if (isLight) Color(0xFFFFFFFF) else Color(0xFF101014)
+    val iconBg = if (isLight) Color(0xFFE2DDD5) else Color(0xFF282830)
+
     Surface(
-        color = Color(0xFF101014),
+        color = bgCol,
         modifier = Modifier.fillMaxSize()
     ) {
         Column(
@@ -96,7 +105,7 @@ fun AuthScreen(onUnlock: () -> Unit) {
             Icon(
                 imageVector = Icons.Default.Lock,
                 contentDescription = null,
-                tint = Color(0xFFFFB347),
+                tint = brandOrange,
                 modifier = Modifier
                     .size(80.dp)
                     .padding(bottom = 16.dp)
@@ -104,7 +113,7 @@ fun AuthScreen(onUnlock: () -> Unit) {
 
             Text(
                 text = if (isSettingPin) "Buat PIN 6-Digit" else "Masukkan PIN",
-                color = Color(0xFFF5F5F5),
+                color = textPrimary,
                 fontSize = 24.sp,
                 fontWeight = FontWeight.Bold,
                 modifier = Modifier.padding(bottom = 8.dp)
@@ -112,7 +121,7 @@ fun AuthScreen(onUnlock: () -> Unit) {
 
             Text(
                 text = if (isSettingPin) "Atur PIN sederhana untuk melindungi keuangan Anda" else "Untuk keamanan Anda",
-                color = Color(0xFFA0A0AA),
+                color = textMuted,
                 fontSize = 14.sp,
                 textAlign = TextAlign.Center,
                 modifier = Modifier.padding(bottom = 32.dp)
@@ -129,12 +138,12 @@ fun AuthScreen(onUnlock: () -> Unit) {
                 visualTransformation = PasswordVisualTransformation(),
                 keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
                 singleLine = true,
-                placeholder = { Text("PIN", color = Color(0xFFA0A0AA)) },
+                placeholder = { Text("PIN", color = textMuted) },
                 colors = OutlinedTextFieldDefaults.colors(
-                    focusedTextColor = Color.White,
-                    unfocusedTextColor = Color.White,
-                    focusedBorderColor = Color(0xFFFFB347),
-                    unfocusedBorderColor = Color(0xFF282830),
+                    focusedTextColor = textPrimary,
+                    unfocusedTextColor = textPrimary,
+                    focusedBorderColor = brandOrange,
+                    unfocusedBorderColor = inputBorder,
                 ),
                 modifier = Modifier.fillMaxWidth()
             )
@@ -172,11 +181,11 @@ fun AuthScreen(onUnlock: () -> Unit) {
                 modifier = Modifier
                     .fillMaxWidth()
                     .height(50.dp),
-                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFFFB347))
+                colors = ButtonDefaults.buttonColors(containerColor = brandOrange)
             ) {
                 Text(
                     if (isSettingPin) "Simpan PIN & Lanjut" else "Masuk",
-                    color = Color(0xFF101014),
+                    color = buttonText,
                     fontWeight = FontWeight.Bold
                 )
             }
@@ -188,18 +197,18 @@ fun AuthScreen(onUnlock: () -> Unit) {
                     modifier = Modifier
                         .size(64.dp)
                         .clip(CircleShape)
-                        .background(Color(0xFF282830))
+                        .background(iconBg)
                 ) {
                     Icon(
                         imageVector = Icons.Default.Face,
                         contentDescription = "Gunakan Biometrik",
-                        tint = Color(0xFFFFB347),
+                        tint = brandOrange,
                         modifier = Modifier.size(32.dp)
                     )
                 }
                 Text(
                     text = "Gunakan Biometrik",
-                    color = Color(0xFFA0A0AA),
+                    color = textMuted,
                     fontSize = 12.sp,
                     modifier = Modifier.padding(top = 8.dp)
                 )

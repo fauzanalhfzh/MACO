@@ -73,6 +73,15 @@ class FinanceViewModel(application: Application) : AndroidViewModel(application)
     private val _userApiKey = MutableStateFlow(prefs.getString("gemini_api_key", "") ?: "")
     val userApiKey = _userApiKey.asStateFlow()
 
+    // Theme Preference State (Light Mode)
+    private val _isLightTheme = MutableStateFlow(prefs.getBoolean("is_light_theme", false))
+    val isLightTheme = _isLightTheme.asStateFlow()
+
+    fun saveThemePreference(isLight: Boolean) {
+        _isLightTheme.value = isLight
+        prefs.edit().putBoolean("is_light_theme", isLight).apply()
+    }
+
     // Gemini states
     private val _isScanning = MutableStateFlow(false)
     val isScanning = _isScanning.asStateFlow()

@@ -11,6 +11,7 @@ import androidx.activity.enableEdgeToEdge
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.viewModels
 import androidx.core.content.ContextCompat
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.mutableStateOf
@@ -19,6 +20,7 @@ import com.example.ui.MainScreen
 import com.example.ui.FinanceViewModel
 import com.example.ui.NotificationHelper
 import com.example.ui.theme.MyApplicationTheme
+import com.example.ui.theme.isLightThemeGlobal
 
 class MainActivity : FragmentActivity() {
 
@@ -64,6 +66,9 @@ class MainActivity : FragmentActivity() {
         NotificationHelper.scheduleWeeklyReminder(this)
 
         setContent {
+            val isLightTheme by viewModel.isLightTheme.collectAsState()
+            isLightThemeGlobal = isLightTheme
+
             MyApplicationTheme {
                 var isAuthenticated by remember { mutableStateOf(false) }
 
